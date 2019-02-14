@@ -58,8 +58,9 @@ func (l *DeviceList) clean() {
 	defer l.m.Unlock()
 	lost := []int{}
 	for id, dev := range l.Devices {
-		if time.Now().Sub(dev.lastseen) > 60*time.Second {
+		if time.Now().Sub(dev.lastseen) > 120*time.Second {
 			fmt.Printf("Lost Device: %d details: %+v\n", id, dev)
+			lost = append(lost, id)
 		}
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(lost)))
