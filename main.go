@@ -44,19 +44,24 @@ func main() {
 
 	deviceList.poller()
 
-	fmt.Printf("Summary:\n")
-	for id, dev := range deviceList.Devices {
+}
+
+func (l *DeviceList) status() {
+	for id, dev := range l.Devices {
 		fmt.Printf("Device: %d Found: %+v\n", id, dev)
 	}
 }
 
 func (l *DeviceList) poller() {
 	timeout := time.NewTimer(*du).C
+	ticker := time.NewTicker(10 * time.Second).C
 
 	for {
 		select {
 		case <-timeout:
 			return
+		case <-ticker:
+			l.status()
 		default:
 			l.scan()
 			l.query()
@@ -65,7 +70,6 @@ func (l *DeviceList) poller() {
 }
 
 func (d *DeviceList) scan() {
-	fmt.Printf("Scanning...\n")
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
 	chkErr(ble.Scan(ctx, *dup, d.scanHandler, nil))
 }
@@ -201,7 +205,7 @@ func chkErr(err error) {
 	switch errors.Cause(err) {
 	case nil:
 	case context.DeadlineExceeded:
-		fmt.Printf("done\n")
+		// fmt.Printf("done\n")
 	case context.Canceled:
 		fmt.Printf("canceled\n")
 	default:
