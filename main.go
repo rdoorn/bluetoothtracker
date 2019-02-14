@@ -128,7 +128,7 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 	newTime := time.Now()
 	duration := newTime.Sub(device.lastseen)
 	device.lastseen = time.Now()
-	log.Printf("Updateing kf for %s", device.Name)
+	log.Printf("Updateing kf for %s: (s:%f d:%f time:%f) %+v", device.Addr, stateReading, deltaReading, float64(duration/time.Nanosecond), *device.kf)
 	device.state = device.kf.Update(stateReading, deltaReading, float64(duration/time.Nanosecond))
 
 }
