@@ -96,12 +96,12 @@ func (l *DeviceList) query() {
 	}
 }
 
-func (l *DeviceList) new(addr ble.Addr) (*Device, bool) {
+func (l *DeviceList) new(addr ble.Addr) (*Device, int, bool) {
 	l.m.Lock()
 	defer l.m.Unlock()
 	for id, dev := range l.Devices {
 		if dev.Addr.String() == addr.String() {
-			return l.Devices[id], false
+			return l.Devices[id], id, false
 		}
 	}
 	new := &Device{
@@ -109,11 +109,11 @@ func (l *DeviceList) new(addr ble.Addr) (*Device, bool) {
 		kf:   new(kalmanfilter.FilterData),
 	}
 	l.Devices = append(l.Devices, new)
-	return new, true
+	return new, len(l.Devices) - 1, true
 }
 
 func (l *DeviceList) scanHandler(a ble.Advertisement) {
-	device, new := l.new(a.Addr())
+	device, id, new := l.new(a.Addr())
 	if new {
 		fmt.Printf("New device found [%s] C %3d\n", a.Addr(), a.RSSI())
 	}
@@ -127,9 +127,9 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 
 	newTime := time.Now()
 	duration := newTime.Sub(device.lastseen)
-	device.lastseen = time.Now()
-	log.Printf("Updateing kf for %s: (s:%f d:%f time:%f) %+v", device.Addr, stateReading, deltaReading, float64(duration/time.Nanosecond), *device.kf)
-	device.state = device.kf.Update(stateReading, deltaReading, float64(duration/time.Nanosecond))
+	device.lastseen = newTime
+	log.Printf("Updateing kf for %s: (s:%f d:%f time:%f) %+v", device.Addr, stateReading, deltaReading, float64(duration/time.Nanosecond), *l.Devices[id].kf)
+	device.state = l.Devices[id].kf.Update(stateReading, deltaReading, float64(duration/time.Nanosecond))
 
 }
 
