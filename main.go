@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/go-ble/ble"
@@ -54,8 +53,8 @@ func main() {
 }
 
 func (d *DeviceList) new(addr ble.Addr) (*Device, bool) {
-	for _, device := range d.Devices {
-		if device.Addr.String() == addr.String() {
+	for _, dev := range d.Devices {
+		if dev.Addr.String() == addr.String() {
 			return nil, true
 		}
 	}
@@ -67,43 +66,46 @@ func (d *DeviceList) new(addr ble.Addr) (*Device, bool) {
 }
 
 func (d *DeviceList) advHandler(a ble.Advertisement) {
-	device, new := d.new(a.Addr())
+	_, new := d.new(a.Addr())
 	if new {
-		filter := func(af ble.Advertisement) bool {
-			return strings.ToUpper(af.Addr().String()) == strings.ToUpper(a.Addr().String())
-		}
+		fmt.Printf("[%s] C %3d\n", a.Addr(), a.RSSI())
+		/*
+			filter := func(af ble.Advertisement) bool {
+				return strings.ToUpper(af.Addr().String()) == strings.ToUpper(a.Addr().String())
+			}
 
-		ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
-		cln, err := ble.Connect(ctx, filter)
-		if err != nil {
-			log.Fatalf("can't connect : %s", err)
-		}
+			ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
+			cln, err := ble.Connect(ctx, filter)
+			if err != nil {
+				log.Fatalf("can't connect : %s", err)
+			}
 
-		// Make sure we had the chance to print out the message.
-		done := make(chan struct{})
-		// Normally, the connection is disconnected by us after our exploration.
-		// However, it can be asynchronously disconnected by the remote peripheral.
-		// So we wait(detect) the disconnection in the go routine.
-		go func() {
-			<-cln.Disconnected()
-			fmt.Printf("[ %s ] is disconnected \n", cln.Addr())
-			close(done)
-		}()
+			// Make sure we had the chance to print out the message.
+			done := make(chan struct{})
+			// Normally, the connection is disconnected by us after our exploration.
+			// However, it can be asynchronously disconnected by the remote peripheral.
+			// So we wait(detect) the disconnection in the go routine.
+			go func() {
+				<-cln.Disconnected()
+				fmt.Printf("[ %s ] is disconnected \n", cln.Addr())
+				close(done)
+			}()
 
-		fmt.Printf("Discovering profile...\n")
-		p, err := cln.DiscoverProfile(true)
-		if err != nil {
-			log.Fatalf("can't discover profile: %s", err)
-		}
-		// Start the exploration.
-		explore(cln, p, device)
+			fmt.Printf("Discovering profile...\n")
+			p, err := cln.DiscoverProfile(true)
+			if err != nil {
+				log.Fatalf("can't discover profile: %s", err)
+			}
+			// Start the exploration.
+			explore(cln, p, device)
 
-		// Disconnect the connection. (On OS X, this might take a while.)
-		fmt.Printf("Disconnecting [ %s ]... (this might take up to few seconds on OS X)\n", cln.Addr())
-		cln.CancelConnection()
+			// Disconnect the connection. (On OS X, this might take a while.)
+			fmt.Printf("Disconnecting [ %s ]... (this might take up to few seconds on OS X)\n", cln.Addr())
+			cln.CancelConnection()
 
-		<-done
-		return
+			<-done
+			return
+		*/
 	}
 
 	// we already know this device, don't poll again
