@@ -57,7 +57,7 @@ func (l *DeviceList) status() {
 			//dist := distance(float64(dev.RSSI))
 			lastSeen := time.Now().Sub(dev.lastseen)
 			distKalman := distance(float64(dev.state))
-			fmt.Printf("Device: %d [%s/%s] (%s, %s) distance: %f since: %s\n", id, dev.Addr.String(), dev.Name, dev.Company, dev.Type, distKalman, lastSeen.String())
+			fmt.Printf("Device: %d [%s] [%s] (%s, %s) distance: %f since: %s\n", id, dev.Addr.String(), dev.Name, dev.Company, dev.Type, distKalman, lastSeen.String())
 		}
 	}
 }
