@@ -26,7 +26,7 @@ type Device struct {
 	TXPowerLevel int
 	lastseen     time.Time
 	lastquery    time.Time
-	kf           kalmanfilter.FilterData
+	kf           *kalmanfilter.FilterData
 	state        float64
 }
 
@@ -106,6 +106,7 @@ func (l *DeviceList) new(addr ble.Addr) (*Device, bool) {
 	}
 	new := &Device{
 		Addr: addr,
+		kf:   new(kalmanfilter.FilterData),
 	}
 	l.Devices = append(l.Devices, new)
 	return new, true
@@ -117,6 +118,7 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 		fmt.Printf("New device found [%s] C %3d\n", a.Addr(), a.RSSI())
 	}
 	// update signal strength
+
 	device.RSSI = a.RSSI()
 	device.TXPowerLevel = a.TxPowerLevel()
 
@@ -126,7 +128,7 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 	newTime := time.Now()
 	duration := newTime.Sub(device.lastseen)
 	device.lastseen = time.Now()
-
+	log.Printf("Updateing kf for %s", device.Name)
 	device.state = device.kf.Update(stateReading, deltaReading, float64(duration/time.Nanosecond))
 
 }
