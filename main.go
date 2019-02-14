@@ -14,7 +14,7 @@ import (
 	"github.com/go-ble/ble"
 	"github.com/go-ble/ble/examples/lib/dev"
 	"github.com/pkg/errors"
-	"github.com/shantanubhadoria/go-kalmanfilter/kalmanfilter"
+	"github.com/rdoorn/kalmanfilter"
 )
 
 type Device struct {
@@ -26,7 +26,7 @@ type Device struct {
 	TXPowerLevel int
 	lastseen     time.Time
 	lastquery    time.Time
-	kf           *kalmanfilter.FilterData
+	kf           *kalmanfilter.Filter
 	state        float64
 }
 
@@ -96,24 +96,25 @@ func (l *DeviceList) query() {
 	}
 }
 
-func (l *DeviceList) new(addr ble.Addr) (*Device, int, bool) {
+func (l *DeviceList) new(addr ble.Addr) (*Device, bool) {
 	l.m.Lock()
 	defer l.m.Unlock()
 	for id, dev := range l.Devices {
 		if dev.Addr.String() == addr.String() {
-			return l.Devices[id], id, false
+			return l.Devices[id], false
 		}
 	}
 	new := &Device{
-		Addr: addr,
-		kf:   new(kalmanfilter.FilterData),
+		Addr:     addr,
+		kf:       kalmanfilter.New(0.01, 0.75),
+		lastseen: time.Now(),
 	}
 	l.Devices = append(l.Devices, new)
-	return new, len(l.Devices) - 1, true
+	return new, true
 }
 
 func (l *DeviceList) scanHandler(a ble.Advertisement) {
-	device, id, new := l.new(a.Addr())
+	device, new := l.new(a.Addr())
 	if new {
 		fmt.Printf("New device found [%s] C %3d\n", a.Addr(), a.RSSI())
 	}
@@ -122,15 +123,7 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 	device.RSSI = a.RSSI()
 	device.TXPowerLevel = a.TxPowerLevel()
 
-	stateReading := float64(device.RSSI) // in units X
-	deltaReading := float64(0.75)        // in unit X per nanosecond
-
-	newTime := time.Now()
-	duration := newTime.Sub(device.lastseen)
-	device.lastseen = newTime
-	log.Printf("Updateing kf for %s: (s:%f d:%f time:%f) %+v", device.Addr, stateReading, deltaReading, float64(duration/time.Nanosecond), *l.Devices[id].kf)
-	device.state = l.Devices[id].kf.Update(stateReading, deltaReading, float64(duration/time.Nanosecond))
-
+	device.state = device.kf.Filter(float64(device.RSSI))
 }
 
 func (l *DeviceList) queryHandler(id int) {
