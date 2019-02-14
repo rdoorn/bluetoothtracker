@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/go-ble/ble"
@@ -37,14 +38,11 @@ func main() {
 
 	d, err := dev.NewDevice(*device)
 	if err != nil {
-		log.Fatalf("can't new device : %s", err)
+		log.Fatalf("can't connect to BT interface : %s", err)
 	}
 	ble.SetDefaultDevice(d)
 
-	// Scan for specified durantion, or until interrupted by user.
-	fmt.Printf("Scanning for %s...\n", *du)
-	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), *du))
-	chkErr(ble.Scan(ctx, *dup, deviceList.advHandler, nil))
+	deviceList.poller()
 
 	fmt.Printf("Summary:\n")
 	for id, dev := range deviceList.Devices {
@@ -52,87 +50,118 @@ func main() {
 	}
 }
 
+func (l *DeviceList) poller() {
+	timeout := time.NewTimer(*du).C
+
+	for {
+		select {
+		case <-timeout:
+			return
+		default:
+			l.scan()
+			l.query()
+		}
+	}
+}
+
+func (d *DeviceList) scan() {
+	fmt.Printf("Scanning...\n")
+	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
+	chkErr(ble.Scan(ctx, *dup, d.scanHandler, nil))
+}
+
+func (d *DeviceList) query() {
+	for id, dev := range d.Devices {
+		if dev.Name == "" {
+			fmt.Printf("Querying %s...\n", dev.Addr.String())
+			d.queryHandler(id)
+		}
+	}
+}
+
 func (d *DeviceList) new(addr ble.Addr) (*Device, bool) {
 	for _, dev := range d.Devices {
 		if dev.Addr.String() == addr.String() {
-			return nil, true
+			return nil, false
 		}
 	}
 	new := &Device{
 		Addr: addr,
 	}
 	d.Devices = append(d.Devices, new)
-	return new, false
+	return new, true
 }
 
-func (d *DeviceList) advHandler(a ble.Advertisement) {
+func (d *DeviceList) scanHandler(a ble.Advertisement) {
 	_, new := d.new(a.Addr())
 	if new {
-		fmt.Printf("[%s] C %3d\n", a.Addr(), a.RSSI())
-		/*
-			filter := func(af ble.Advertisement) bool {
-				return strings.ToUpper(af.Addr().String()) == strings.ToUpper(a.Addr().String())
-			}
+		fmt.Printf("New device found [%s] C %3d\n", a.Addr(), a.RSSI())
+	}
+}
 
-			ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
-			cln, err := ble.Connect(ctx, filter)
-			if err != nil {
-				log.Fatalf("can't connect : %s", err)
-			}
+func (d *DeviceList) queryHandler(id int) {
 
-			// Make sure we had the chance to print out the message.
-			done := make(chan struct{})
-			// Normally, the connection is disconnected by us after our exploration.
-			// However, it can be asynchronously disconnected by the remote peripheral.
-			// So we wait(detect) the disconnection in the go routine.
-			go func() {
-				<-cln.Disconnected()
-				fmt.Printf("[ %s ] is disconnected \n", cln.Addr())
-				close(done)
-			}()
-
-			fmt.Printf("Discovering profile...\n")
-			p, err := cln.DiscoverProfile(true)
-			if err != nil {
-				log.Fatalf("can't discover profile: %s", err)
-			}
-			// Start the exploration.
-			explore(cln, p, device)
-
-			// Disconnect the connection. (On OS X, this might take a while.)
-			fmt.Printf("Disconnecting [ %s ]... (this might take up to few seconds on OS X)\n", cln.Addr())
-			cln.CancelConnection()
-
-			<-done
-			return
-		*/
+	filter := func(af ble.Advertisement) bool {
+		return strings.ToUpper(af.Addr().String()) == strings.ToUpper(d.Devices[id].Addr.String())
 	}
 
-	// we already know this device, don't poll again
+	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
+	cln, err := ble.Connect(ctx, filter)
+	if err != nil {
+		log.Fatalf("can't connect : %s", err)
+	}
 
-	/*
-		if a.Connectable() {
-			fmt.Printf("[%s] C %3d:", a.Addr(), a.RSSI())
-		} else {
-			fmt.Printf("[%s] N %3d:", a.Addr(), a.RSSI())
-		}
-		comma := ""
-		if len(a.LocalName()) > 0 {
-			fmt.Printf(" Name: %s", a.LocalName())
-			comma = ","
-		}
-		if len(a.Services()) > 0 {
-			fmt.Printf("%s Svcs: %v", comma, a.Services())
-			comma = ","
-		}
-		fmt.Printf(" TXLevel: %3d", a.TxPowerLevel())
-		fmt.Printf(" Connectable: %t", a.Connectable())
-		if len(a.ManufacturerData()) > 0 {
-			fmt.Printf("%s MD: %X", comma, a.ManufacturerData())
-		}
-		fmt.Printf("\n")
-	*/
+	// Make sure we had the chance to print out the message.
+	done := make(chan struct{})
+	// Normally, the connection is disconnected by us after our exploration.
+	// However, it can be asynchronously disconnected by the remote peripheral.
+	// So we wait(detect) the disconnection in the go routine.
+	go func() {
+		<-cln.Disconnected()
+		fmt.Printf("[ %s ] is disconnected \n", cln.Addr())
+		close(done)
+	}()
+
+	fmt.Printf("Discovering profile...\n")
+	p, err := cln.DiscoverProfile(true)
+	if err != nil {
+		log.Fatalf("can't discover profile: %s", err)
+	}
+	// Start the exploration.
+	explore(cln, p, d.Devices[id])
+
+	// Disconnect the connection. (On OS X, this might take a while.)
+	fmt.Printf("Disconnecting [ %s ]... (this might take up to few seconds on OS X)\n", cln.Addr())
+	cln.CancelConnection()
+
+	<-done
 }
+
+// we already know this device, don't poll again
+
+/*
+	if a.Connectable() {
+		fmt.Printf("[%s] C %3d:", a.Addr(), a.RSSI())
+	} else {
+		fmt.Printf("[%s] N %3d:", a.Addr(), a.RSSI())
+	}
+	comma := ""
+	if len(a.LocalName()) > 0 {
+		fmt.Printf(" Name: %s", a.LocalName())
+		comma = ","
+	}
+	if len(a.Services()) > 0 {
+		fmt.Printf("%s Svcs: %v", comma, a.Services())
+		comma = ","
+	}
+	fmt.Printf(" TXLevel: %3d", a.TxPowerLevel())
+	fmt.Printf(" Connectable: %t", a.Connectable())
+	if len(a.ManufacturerData()) > 0 {
+		fmt.Printf("%s MD: %X", comma, a.ManufacturerData())
+	}
+	fmt.Printf("\n")
+*/
+//}
 
 func explore(cln ble.Client, p *ble.Profile, d *Device) error {
 	for _, s := range p.Services {
