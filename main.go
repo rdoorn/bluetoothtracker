@@ -55,7 +55,8 @@ func (l *DeviceList) status() {
 	for id, dev := range l.Devices {
 		if time.Now().Sub(dev.lastseen) < 120*time.Second {
 			dist := distance(float64(dev.RSSI))
-			fmt.Printf("Device: %d details: %+v distance: %f kfk: %f\n", id, dev, dist, dev.state)
+			distKalman := distance(float64(dev.state))
+			fmt.Printf("Device: %d details: %+v distance: %f kfk: %f\n", id, dev, dist, distKalman)
 		}
 	}
 }
