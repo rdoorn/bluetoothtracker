@@ -15,7 +15,7 @@ import (
 
 var (
 	device = flag.String("device", "default", "implementation of ble")
-	du     = flag.Duration("du", 5*time.Second, "scanning duration")
+	du     = flag.Duration("du", 30*time.Second, "scanning duration")
 	dup    = flag.Bool("dup", true, "allow duplicate reported")
 )
 
