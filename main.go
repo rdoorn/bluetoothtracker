@@ -59,7 +59,8 @@ func (l *DeviceList) poller() {
 			return
 		default:
 			l.scan()
-			l.query()
+			//l.query()
+			caller("67:d9:3d:86:2b:d4")
 		}
 	}
 }
@@ -71,12 +72,16 @@ func (d *DeviceList) scan() {
 }
 
 func (d *DeviceList) query() {
+	macs := []string{}
 	for _, dev := range d.Devices {
 		if dev.Name == "" {
-			fmt.Printf("Querying %s...\n", dev.Addr.String())
-			//d.queryHandler(id)
-			caller(dev.Addr.String())
+			macs = append(macs, dev.Addr.String())
 		}
+	}
+	if len(macs) > 0 {
+		fmt.Printf("Querying %s...\n", macs[0])
+		//d.queryHandler(id)
+		caller(macs[0])
 	}
 }
 
