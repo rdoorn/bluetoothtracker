@@ -2,20 +2,17 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-ble/ble"
 	"github.com/go-ble/ble/examples/lib/dev"
 	"github.com/pkg/errors"
-)
-
-var (
-	device = flag.String("device", "default", "implementation of ble")
-	du     = flag.Duration("du", 30*time.Second, "scanning duration")
-	dup    = flag.Bool("dup", true, "allow duplicate reported")
 )
 
 type Device struct {
@@ -25,18 +22,19 @@ type Device struct {
 	Company      string
 	Type         string
 	TXPowerLevel int
+	lastseen     time.Time
 }
 
 type DeviceList struct {
 	Devices []*Device
+	m       sync.Mutex
 }
 
 func main() {
-	flag.Parse()
 
 	deviceList := &DeviceList{}
 
-	d, err := dev.NewDevice(*device)
+	d, err := dev.NewDevice("default")
 	if err != nil {
 		log.Fatalf("can't connect to BT interface : %s", err)
 	}
@@ -47,18 +45,23 @@ func main() {
 }
 
 func (l *DeviceList) status() {
+	l.m.Lock()
+	defer l.m.Unlock()
 	for id, dev := range l.Devices {
-		fmt.Printf("Device: %d Found: %+v\n", id, dev)
+		fmt.Printf("Device: %d details: %+v\n", id, dev)
 	}
 }
 
 func (l *DeviceList) poller() {
-	timeout := time.NewTimer(*du).C
+	// wait for sigint or sigterm for cleanup - note that sigterm cannot be caught
+	sigterm := make(chan os.Signal, 10)
+	signal.Notify(sigterm, os.Interrupt, syscall.SIGTERM)
+
 	ticker := time.NewTicker(10 * time.Second).C
 
 	for {
 		select {
-		case <-timeout:
+		case <-sigterm:
 			return
 		case <-ticker:
 			l.status()
@@ -69,46 +72,51 @@ func (l *DeviceList) poller() {
 	}
 }
 
-func (d *DeviceList) scan() {
+func (l *DeviceList) scan() {
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
-	chkErr(ble.Scan(ctx, *dup, d.scanHandler, nil))
+	chkErr(ble.Scan(ctx, false, l.scanHandler, nil))
 }
 
-func (d *DeviceList) query() {
-	for id, dev := range d.Devices {
+func (l *DeviceList) query() {
+	for id, dev := range l.Devices {
 		if dev.Name == "" {
-			d.queryHandler(id)
+			l.queryHandler(id)
 		}
 	}
 }
 
-func (d *DeviceList) new(addr ble.Addr) (*Device, bool) {
-	for _, dev := range d.Devices {
+func (l *DeviceList) new(addr ble.Addr) (*Device, bool) {
+	for _, dev := range l.Devices {
 		if dev.Addr.String() == addr.String() {
 			return nil, false
 		}
 	}
+	l.m.Lock()
+	defer l.m.Unlock()
 	new := &Device{
 		Addr: addr,
 	}
-	d.Devices = append(d.Devices, new)
+	l.Devices = append(l.Devices, new)
 	return new, true
 }
 
-func (d *DeviceList) scanHandler(a ble.Advertisement) {
-	device, new := d.new(a.Addr())
+func (l *DeviceList) scanHandler(a ble.Advertisement) {
+	device, new := l.new(a.Addr())
 	if new {
 		fmt.Printf("New device found [%s] C %3d\n", a.Addr(), a.RSSI())
 		device.TXPowerLevel = a.TxPowerLevel()
 		device.RSSI = a.RSSI()
 	}
+	// update signal strength
+	device.RSSI = a.RSSI()
+	device.TXPowerLevel = a.TxPowerLevel()
 }
 
-func (d *DeviceList) queryHandler(id int) {
+func (l *DeviceList) queryHandler(id int) {
 
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 10*time.Second))
 
-	cln, err := ble.Dial(ctx, d.Devices[id].Addr)
+	cln, err := ble.Dial(ctx, l.Devices[id].Addr)
 	if err != nil {
 		log.Printf("can't Dial : %s", err)
 		return
@@ -132,7 +140,7 @@ func (d *DeviceList) queryHandler(id int) {
 		return
 	}
 	// Start the exploration.
-	explore(cln, p, d.Devices[id])
+	explore(cln, p, l.Devices[id])
 
 	// Disconnect the connection. (On OS X, this might take a while.)
 	fmt.Printf("Disconnecting [ %s ]... (this might take up to few seconds on OS X)\n", cln.Addr())
