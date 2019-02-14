@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -61,7 +62,9 @@ func (l *DeviceList) clean() {
 			fmt.Printf("Lost Device: %d details: %+v\n", id, dev)
 		}
 	}
-	for i := len(lost); i < 0; i-- {
+	sort.Sort(sort.Reverse(sort.IntSlice(lost)))
+	for i := range lost {
+		log.Printf("deleting %d", i)
 		l.Devices = remove(l.Devices, i)
 	}
 }
@@ -136,7 +139,7 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 func (l *DeviceList) queryHandler(id int) {
 
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 20*time.Second))
-
+	log.Print("Quering %s...", l.Devices[id].Addr.String())
 	cln, err := ble.Dial(ctx, l.Devices[id].Addr)
 	if err != nil {
 		log.Printf("can't Dial %s : %s", l.Devices[id].Addr.String(), err)
