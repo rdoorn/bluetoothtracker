@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"sort"
@@ -49,7 +50,8 @@ func (l *DeviceList) status() {
 	l.m.Lock()
 	defer l.m.Unlock()
 	for id, dev := range l.Devices {
-		fmt.Printf("Device: %d details: %+v\n", id, dev)
+		dist := distance(float64(dev.RSSI))
+		fmt.Printf("Device: %d details: %+v distance: %d\n", id, dev, dist)
 	}
 }
 
@@ -232,6 +234,22 @@ func propString(p ble.Property) string {
 		}
 	}
 	return s
+}
+
+func distance(rssi float64) float64 {
+
+	txPower := float64(-59) //hard coded power value. Usually ranges between -59 to -65
+
+	if rssi == 0 {
+		return -1.0
+	}
+
+	var ratio = rssi * 1.0 / txPower
+	if ratio < 1.0 {
+		return math.Pow(ratio, 10)
+	}
+	var distance = (0.89976)*math.Pow(ratio, 7.7095) + 0.111
+	return distance
 }
 
 func chkErr(err error) {
