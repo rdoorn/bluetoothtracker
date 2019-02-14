@@ -124,6 +124,7 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 	device.RSSI = a.RSSI()
 	device.TXPowerLevel = a.TxPowerLevel()
 
+	device.lastseen = time.Now()
 	device.state = device.kf.Filter(float64(device.RSSI))
 }
 
