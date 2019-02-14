@@ -59,8 +59,7 @@ func (l *DeviceList) poller() {
 			return
 		default:
 			l.scan()
-			//l.query()
-			caller("67:d9:3d:86:2b:d4")
+			l.query()
 		}
 	}
 }
@@ -72,17 +71,21 @@ func (d *DeviceList) scan() {
 }
 
 func (d *DeviceList) query() {
-	macs := []string{}
-	for _, dev := range d.Devices {
+	//macs := []string{}
+	for id, dev := range d.Devices {
 		if dev.Name == "" {
-			macs = append(macs, dev.Addr.String())
+			//macs = append(macs, dev.Addr.String())
+		    d.queryHandler(id)
+			//d.caller(id)
 		}
 	}
+    /*
 	if len(macs) > 0 {
 		fmt.Printf("Querying %s...\n", macs[0])
-		//d.queryHandler(id)
-		caller(macs[0])
+		d.queryHandler(id)
+		//caller(macs[0])
 	}
+    */
 }
 
 func (d *DeviceList) new(addr ble.Addr) (*Device, bool) {
@@ -107,12 +110,17 @@ func (d *DeviceList) scanHandler(a ble.Advertisement) {
 
 func (d *DeviceList) queryHandler(id int) {
 
+    /*
 	filter := func(af ble.Advertisement) bool {
 		return strings.ToUpper(af.Addr().String()) == strings.ToUpper(d.Devices[id].Addr.String())
 	}
+    */
 
-	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
-	cln, err := ble.Connect(ctx, filter)
+	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 10*time.Second))
+
+	//cln, err := ble.Connect(ctx, filter)
+    cln, err := ble.Dial(ctx, d.Devices[id].Addr)
+
 	if err != nil {
 		log.Printf("can't connect : %s", err)
 		return
@@ -132,7 +140,8 @@ func (d *DeviceList) queryHandler(id int) {
 	fmt.Printf("Discovering profile...\n")
 	p, err := cln.DiscoverProfile(true)
 	if err != nil {
-		log.Fatalf("can't discover profile: %s", err)
+		log.Printf("can't discover profile: %s", err)
+        return
 	}
 	// Start the exploration.
 	explore(cln, p, d.Devices[id])
@@ -254,17 +263,18 @@ func explore(cln ble.Client, p *ble.Profile, d *Device) error {
 	return nil
 }
 
-func caller(addr string) {
+func (d *DeviceList) caller(id int) {
 	filter := func(a ble.Advertisement) bool {
-		return strings.ToUpper(a.Addr().String()) == strings.ToUpper(addr)
+		return strings.ToUpper(a.Addr().String()) == strings.ToUpper(d.Devices[id].Addr.String())
 	}
 
 	// Scan for specified durantion, or until interrupted by user.
-	fmt.Printf("Querying for %s...\n")
+	fmt.Printf("Querying for %s...\n", d.Devices[id].Addr.String())
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
 	cln, err := ble.Connect(ctx, filter)
 	if err != nil {
-		log.Fatalf("can't connect : %s", err)
+		log.Printf("can't connect : %s", err)
+        return
 	}
 
 	// Make sure we had the chance to print out the message.
