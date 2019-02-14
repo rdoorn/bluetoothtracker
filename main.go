@@ -51,7 +51,8 @@ func advHandler(a ble.Advertisement) {
 	fmt.Printf(" TXLevel: %3d", a.TxPowerLevel())
 	fmt.Printf(" Connectable: %t", a.Connectable())
 	if len(a.ManufacturerData()) > 0 {
-		fmt.Printf("%s MD: %X", comma, a.ManufacturerData())
+		//fmt.Printf("%s MD: %X", comma, a.ManufacturerData())
+		fmt.Printf("%s MD: %x", comma, a.ManufacturerData())
 	}
 	fmt.Printf("\n")
 }
