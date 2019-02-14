@@ -106,13 +106,13 @@ func (l *DeviceList) query() {
 }
 
 func (l *DeviceList) new(addr ble.Addr) (*Device, bool) {
+	l.m.Lock()
+	defer l.m.Unlock()
 	for id, dev := range l.Devices {
 		if dev.Addr.String() == addr.String() {
 			return l.Devices[id], false
 		}
 	}
-	l.m.Lock()
-	defer l.m.Unlock()
 	new := &Device{
 		Addr: addr,
 	}
@@ -135,11 +135,11 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 
 func (l *DeviceList) queryHandler(id int) {
 
-	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 10*time.Second))
+	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 20*time.Second))
 
 	cln, err := ble.Dial(ctx, l.Devices[id].Addr)
 	if err != nil {
-		log.Printf("can't Dial : %s", err)
+		log.Printf("can't Dial %s : %s", l.Devices[id].Addr.String(), err)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (l *DeviceList) queryHandler(id int) {
 	fmt.Printf("Discovering profile...\n")
 	p, err := cln.DiscoverProfile(true)
 	if err != nil {
-		log.Printf("can't discover profile: %s", err)
+		log.Printf("can't discover profile of %s: %s", l.Devices[id].Addr.String(), err)
 		return
 	}
 	// Start the exploration.
