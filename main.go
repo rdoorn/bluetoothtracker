@@ -106,9 +106,9 @@ func (l *DeviceList) query() {
 }
 
 func (l *DeviceList) new(addr ble.Addr) (*Device, bool) {
-	for _, dev := range l.Devices {
+	for id, dev := range l.Devices {
 		if dev.Addr.String() == addr.String() {
-			return nil, false
+			return l.Devices[id], false
 		}
 	}
 	l.m.Lock()
