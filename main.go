@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"os/signal"
-	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/go-ble/ble"
 	"github.com/go-ble/ble/examples/lib/dev"
 	"github.com/pkg/errors"
+	"github.com/shantanubhadoria/go-kalmanfilter/kalmanfilter"
 )
 
 type Device struct {
@@ -25,6 +25,9 @@ type Device struct {
 	Type         string
 	TXPowerLevel int
 	lastseen     time.Time
+	lastquery    time.Time
+	kf           kalmanfilter.FilterData
+	state        float64
 }
 
 type DeviceList struct {
@@ -50,31 +53,11 @@ func (l *DeviceList) status() {
 	l.m.Lock()
 	defer l.m.Unlock()
 	for id, dev := range l.Devices {
-		dist := distance(float64(dev.RSSI))
-		fmt.Printf("Device: %d details: %+v distance: %d\n", id, dev, dist)
-	}
-}
-
-func (l *DeviceList) clean() {
-	l.m.Lock()
-	defer l.m.Unlock()
-	lost := []int{}
-	for id, dev := range l.Devices {
-		if time.Now().Sub(dev.lastseen) > 120*time.Second {
-			fmt.Printf("Lost Device: %d details: %+v\n", id, dev)
-			lost = append(lost, id)
+		if time.Now().Sub(dev.lastseen) < 120*time.Second {
+			dist := distance(float64(dev.RSSI))
+			fmt.Printf("Device: %d details: %+v distance: %f kfk: %f\n", id, dev, dist, dev.state)
 		}
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(lost)))
-	for i := range lost {
-		log.Printf("deleting %d", i)
-		l.Devices = remove(l.Devices, i)
-	}
-}
-
-func remove(s []*Device, i int) []*Device {
-	s[len(s)-1], s[i] = s[i], s[len(s)-1]
-	return s[:len(s)-1]
 }
 
 func (l *DeviceList) poller() {
@@ -89,7 +72,6 @@ func (l *DeviceList) poller() {
 		case <-sigterm:
 			return
 		case <-ticker:
-			l.clean()
 			l.status()
 		default:
 			l.scan()
@@ -106,7 +88,10 @@ func (l *DeviceList) scan() {
 func (l *DeviceList) query() {
 	for id, dev := range l.Devices {
 		if dev.Name == "" {
-			l.queryHandler(id)
+			if time.Now().Sub(dev.lastquery) > 60*time.Second {
+				l.queryHandler(id)
+				l.Devices[id].lastquery = time.Now()
+			}
 		}
 	}
 }
@@ -130,13 +115,20 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 	device, new := l.new(a.Addr())
 	if new {
 		fmt.Printf("New device found [%s] C %3d\n", a.Addr(), a.RSSI())
-		device.TXPowerLevel = a.TxPowerLevel()
-		device.RSSI = a.RSSI()
 	}
 	// update signal strength
 	device.RSSI = a.RSSI()
 	device.TXPowerLevel = a.TxPowerLevel()
+
+	stateReading := float64(device.RSSI) // in units X
+	deltaReading := float64(0.75)        // in unit X per nanosecond
+
+	newTime := time.Now()
+	duration := newTime.Sub(device.lastseen)
 	device.lastseen = time.Now()
+
+	device.state = device.kf.Update(stateReading, deltaReading, float64(duration/time.Nanosecond))
+
 }
 
 func (l *DeviceList) queryHandler(id int) {
