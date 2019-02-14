@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/go-ble/ble"
@@ -20,11 +19,12 @@ var (
 )
 
 type Device struct {
-	Addr    ble.Addr
-	RSSI    int
-	Name    string
-	Company string
-	Type    string
+	Addr         ble.Addr
+	RSSI         int
+	Name         string
+	Company      string
+	Type         string
+	TXPowerLevel int
 }
 
 type DeviceList struct {
@@ -71,21 +71,11 @@ func (d *DeviceList) scan() {
 }
 
 func (d *DeviceList) query() {
-	//macs := []string{}
 	for id, dev := range d.Devices {
 		if dev.Name == "" {
-			//macs = append(macs, dev.Addr.String())
-		    d.queryHandler(id)
-			//d.caller(id)
+			d.queryHandler(id)
 		}
 	}
-    /*
-	if len(macs) > 0 {
-		fmt.Printf("Querying %s...\n", macs[0])
-		d.queryHandler(id)
-		//caller(macs[0])
-	}
-    */
 }
 
 func (d *DeviceList) new(addr ble.Addr) (*Device, bool) {
@@ -102,27 +92,21 @@ func (d *DeviceList) new(addr ble.Addr) (*Device, bool) {
 }
 
 func (d *DeviceList) scanHandler(a ble.Advertisement) {
-	_, new := d.new(a.Addr())
+	device, new := d.new(a.Addr())
 	if new {
 		fmt.Printf("New device found [%s] C %3d\n", a.Addr(), a.RSSI())
+		device.TXPowerLevel = a.TxPowerLevel()
+		device.RSSI = a.RSSI()
 	}
 }
 
 func (d *DeviceList) queryHandler(id int) {
 
-    /*
-	filter := func(af ble.Advertisement) bool {
-		return strings.ToUpper(af.Addr().String()) == strings.ToUpper(d.Devices[id].Addr.String())
-	}
-    */
-
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 10*time.Second))
 
-	//cln, err := ble.Connect(ctx, filter)
-    cln, err := ble.Dial(ctx, d.Devices[id].Addr)
-
+	cln, err := ble.Dial(ctx, d.Devices[id].Addr)
 	if err != nil {
-		log.Printf("can't connect : %s", err)
+		log.Printf("can't Dial : %s", err)
 		return
 	}
 
@@ -141,7 +125,7 @@ func (d *DeviceList) queryHandler(id int) {
 	p, err := cln.DiscoverProfile(true)
 	if err != nil {
 		log.Printf("can't discover profile: %s", err)
-        return
+		return
 	}
 	// Start the exploration.
 	explore(cln, p, d.Devices[id])
@@ -152,32 +136,6 @@ func (d *DeviceList) queryHandler(id int) {
 
 	<-done
 }
-
-// we already know this device, don't poll again
-
-/*
-	if a.Connectable() {
-		fmt.Printf("[%s] C %3d:", a.Addr(), a.RSSI())
-	} else {
-		fmt.Printf("[%s] N %3d:", a.Addr(), a.RSSI())
-	}
-	comma := ""
-	if len(a.LocalName()) > 0 {
-		fmt.Printf(" Name: %s", a.LocalName())
-		comma = ","
-	}
-	if len(a.Services()) > 0 {
-		fmt.Printf("%s Svcs: %v", comma, a.Services())
-		comma = ","
-	}
-	fmt.Printf(" TXLevel: %3d", a.TxPowerLevel())
-	fmt.Printf(" Connectable: %t", a.Connectable())
-	if len(a.ManufacturerData()) > 0 {
-		fmt.Printf("%s MD: %X", comma, a.ManufacturerData())
-	}
-	fmt.Printf("\n")
-*/
-//}
 
 func explore(cln ble.Client, p *ble.Profile, d *Device) error {
 	for _, s := range p.Services {
@@ -214,164 +172,6 @@ func explore(cln ble.Client, p *ble.Profile, d *Device) error {
 				}
 				fmt.Printf("        Value         %x | %q\n", b, b)
 			}
-
-			/*
-				if *sub != 0 {
-					// Don't bother to subscribe the Service Changed characteristics.
-					if c.UUID.Equal(ble.ServiceChangedUUID) {
-						continue
-					}
-
-					// Don't touch the Apple-specific Service/Characteristic.
-					// Service: D0611E78BBB44591A5F8487910AE4366
-					// Characteristic: 8667556C9A374C9184ED54EE27D90049, Property: 0x18 (WN),
-					//   Descriptor: 2902, Client Characteristic Configuration
-					//   Value         0000 | "\x00\x00"
-					if c.UUID.Equal(ble.MustParse("8667556C9A374C9184ED54EE27D90049")) {
-						continue
-					}
-
-					if (c.Property & ble.CharNotify) != 0 {
-						fmt.Printf("\n-- Subscribe to notification for %s --\n", *sub)
-						h := func(req []byte) { fmt.Printf("Notified: %q [ % X ]\n", string(req), req) }
-						if err := cln.Subscribe(c, false, h); err != nil {
-							log.Fatalf("subscribe failed: %s", err)
-						}
-						time.Sleep(*sub)
-						if err := cln.Unsubscribe(c, false); err != nil {
-							log.Fatalf("unsubscribe failed: %s", err)
-						}
-						fmt.Printf("-- Unsubscribe to notification --\n")
-					}
-					if (c.Property & ble.CharIndicate) != 0 {
-						fmt.Printf("\n-- Subscribe to indication of %s --\n", *sub)
-						h := func(req []byte) { fmt.Printf("Indicated: %q [ % X ]\n", string(req), req) }
-						if err := cln.Subscribe(c, true, h); err != nil {
-							log.Fatalf("subscribe failed: %s", err)
-						}
-						time.Sleep(*sub)
-						if err := cln.Unsubscribe(c, true); err != nil {
-							log.Fatalf("unsubscribe failed: %s", err)
-						}
-						fmt.Printf("-- Unsubscribe to indication --\n")
-					}
-				}
-			*/
-		}
-		fmt.Printf("\n")
-	}
-	return nil
-}
-
-func (d *DeviceList) caller(id int) {
-	filter := func(a ble.Advertisement) bool {
-		return strings.ToUpper(a.Addr().String()) == strings.ToUpper(d.Devices[id].Addr.String())
-	}
-
-	// Scan for specified durantion, or until interrupted by user.
-	fmt.Printf("Querying for %s...\n", d.Devices[id].Addr.String())
-	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), 2*time.Second))
-	cln, err := ble.Connect(ctx, filter)
-	if err != nil {
-		log.Printf("can't connect : %s", err)
-        return
-	}
-
-	// Make sure we had the chance to print out the message.
-	done := make(chan struct{})
-	// Normally, the connection is disconnected by us after our exploration.
-	// However, it can be asynchronously disconnected by the remote peripheral.
-	// So we wait(detect) the disconnection in the go routine.
-	go func() {
-		<-cln.Disconnected()
-		fmt.Printf("[ %s ] is disconnected \n", cln.Addr())
-		close(done)
-	}()
-
-	fmt.Printf("Discovering profile...\n")
-	p, err := cln.DiscoverProfile(true)
-	if err != nil {
-		log.Fatalf("can't discover profile: %s", err)
-	}
-
-	// Start the exploration.
-	explore2(cln, p)
-
-	// Disconnect the connection. (On OS X, this might take a while.)
-	fmt.Printf("Disconnecting [ %s ]... (this might take up to few seconds on OS X)\n", cln.Addr())
-	cln.CancelConnection()
-
-	<-done
-}
-
-func explore2(cln ble.Client, p *ble.Profile) error {
-	for _, s := range p.Services {
-		fmt.Printf("    Service: %s %s, Handle (0x%02X)\n", s.UUID, ble.Name(s.UUID), s.Handle)
-
-		for _, c := range s.Characteristics {
-			fmt.Printf("      Characteristic: %s %s, Property: 0x%02X (%s), Handle(0x%02X), VHandle(0x%02X)\n",
-				c.UUID, ble.Name(c.UUID), c.Property, propString(c.Property), c.Handle, c.ValueHandle)
-			if (c.Property & ble.CharRead) != 0 {
-				b, err := cln.ReadCharacteristic(c)
-				if err != nil {
-					fmt.Printf("Failed to read characteristic: %s\n", err)
-					continue
-				}
-				fmt.Printf("        Value         %x | %q\n", b, b)
-			}
-
-			for _, d := range c.Descriptors {
-				fmt.Printf("        Descriptor: %s %s, Handle(0x%02x)\n", d.UUID, ble.Name(d.UUID), d.Handle)
-				b, err := cln.ReadDescriptor(d)
-				if err != nil {
-					fmt.Printf("Failed to read descriptor: %s\n", err)
-					continue
-				}
-				fmt.Printf("        Value         %x | %q\n", b, b)
-			}
-
-			/*
-				if *sub != 0 {
-					// Don't bother to subscribe the Service Changed characteristics.
-					if c.UUID.Equal(ble.ServiceChangedUUID) {
-						continue
-					}
-
-					// Don't touch the Apple-specific Service/Characteristic.
-					// Service: D0611E78BBB44591A5F8487910AE4366
-					// Characteristic: 8667556C9A374C9184ED54EE27D90049, Property: 0x18 (WN),
-					//   Descriptor: 2902, Client Characteristic Configuration
-					//   Value         0000 | "\x00\x00"
-					if c.UUID.Equal(ble.MustParse("8667556C9A374C9184ED54EE27D90049")) {
-						continue
-					}
-
-					if (c.Property & ble.CharNotify) != 0 {
-						fmt.Printf("\n-- Subscribe to notification for %s --\n", *sub)
-						h := func(req []byte) { fmt.Printf("Notified: %q [ % X ]\n", string(req), req) }
-						if err := cln.Subscribe(c, false, h); err != nil {
-							log.Fatalf("subscribe failed: %s", err)
-						}
-						time.Sleep(*sub)
-						if err := cln.Unsubscribe(c, false); err != nil {
-							log.Fatalf("unsubscribe failed: %s", err)
-						}
-						fmt.Printf("-- Unsubscribe to notification --\n")
-					}
-					if (c.Property & ble.CharIndicate) != 0 {
-						fmt.Printf("\n-- Subscribe to indication of %s --\n", *sub)
-						h := func(req []byte) { fmt.Printf("Indicated: %q [ % X ]\n", string(req), req) }
-						if err := cln.Subscribe(c, true, h); err != nil {
-							log.Fatalf("subscribe failed: %s", err)
-						}
-						time.Sleep(*sub)
-						if err := cln.Unsubscribe(c, true); err != nil {
-							log.Fatalf("unsubscribe failed: %s", err)
-						}
-						fmt.Printf("-- Unsubscribe to indication --\n")
-					}
-				}
-			*/
 		}
 		fmt.Printf("\n")
 	}
