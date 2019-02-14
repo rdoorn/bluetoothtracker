@@ -52,6 +52,25 @@ func (l *DeviceList) status() {
 	}
 }
 
+func (l *DeviceList) clean() {
+	l.m.Lock()
+	defer l.m.Unlock()
+	lost := []int{}
+	for id, dev := range l.Devices {
+		if time.Now().Sub(dev.lastseen) > 60*time.Second {
+			fmt.Printf("Lost Device: %d details: %+v\n", id, dev)
+		}
+	}
+	for i := len(lost); i < 0; i-- {
+		l.Devices = remove(l.Devices, i)
+	}
+}
+
+func remove(s []*Device, i int) []*Device {
+	s[len(s)-1], s[i] = s[i], s[len(s)-1]
+	return s[:len(s)-1]
+}
+
 func (l *DeviceList) poller() {
 	// wait for sigint or sigterm for cleanup - note that sigterm cannot be caught
 	sigterm := make(chan os.Signal, 10)
@@ -64,6 +83,7 @@ func (l *DeviceList) poller() {
 		case <-sigterm:
 			return
 		case <-ticker:
+			l.clean()
 			l.status()
 		default:
 			l.scan()
@@ -110,6 +130,7 @@ func (l *DeviceList) scanHandler(a ble.Advertisement) {
 	// update signal strength
 	device.RSSI = a.RSSI()
 	device.TXPowerLevel = a.TxPowerLevel()
+	device.lastseen = time.Now()
 }
 
 func (l *DeviceList) queryHandler(id int) {
